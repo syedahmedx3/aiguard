@@ -1,20 +1,27 @@
 {
-  "name": "aiguard",
+  "name": "@syedahmedx3/aiguard",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "files": [
+    "dist"
+  ],
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "tsup",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
   "dependencies": {
     "minimatch": "^10.2.5"
   },
   "devDependencies": {
     "@types/node": "^26.0.0",
+    "@vitest/coverage-v8": "^4.1.9",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
     "vitest": "^4.1.9"
