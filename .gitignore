@@ -1,3 +1,11 @@
-node_modules
-dist
-.env
+node_modules/
+dist/
+coverage/
+*.tgz
+
+# Temporary/manual testing
+manual-test.mjs
+hello.txt
+fake-link
+secrets/
+.aipolicy
