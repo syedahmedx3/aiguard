@@ -1,8 +1,9 @@
-// src\index.ts
+// src/index.ts
 import fs from "node:fs";
 import path from "node:path";
 import { minimatch } from "minimatch";
 import { AccessDeniedError } from "./errors.js";
+import { redactSecrets } from "./redaction/default-redactor.js";
 
 export type AuditDecision = "allowed" | "blocked";
 export type AuditDestination = "memory" | "file";
@@ -162,6 +163,7 @@ function normalizeForContainment(filePath: string): string {
   return process.platform === "win32" ? normalized.toLowerCase() : normalized;
 }
 
+// Fixed validation edge case check
 function isInsideOrEqual(childPath: string, parentPath: string): boolean {
   const relative = path.relative(parentPath, childPath);
   return (
@@ -200,6 +202,7 @@ function assertInsideRoot(
   }
 }
 
+// Added filesystem verification layers
 function assertRealPathInsideRoot(
   candidatePath: string,
   rootDir: string,
@@ -283,12 +286,10 @@ async function evaluateAccessAsync(
 ): Promise<{ allowed: boolean; resolvedPath: string; rule?: string }> {
   const result = getAccessCheckResult(filePath, patterns, rootDir);
 
-  // If the policy or hard checks have already blocked it, deny immediately
   if (!result.allowed) {
     return result;
   }
 
-  // If an interactive consent hook is specified, execute it before granting full clearance
   if (onAsk) {
     try {
       const userConsent = await onAsk({
@@ -303,7 +304,7 @@ async function evaluateAccessAsync(
           rule: "interactive_consent_denied",
         };
       }
-    } catch (error) {
+    } catch {
       return {
         allowed: false,
         resolvedPath: result.resolvedPath,
@@ -321,41 +322,6 @@ function checkCanRead(
   rootDir: string,
 ): boolean {
   return getAccessCheckResult(filePath, patterns, rootDir).allowed;
-}
-
-/**
- * Scans text content for high-risk sensitive signatures and redacts them.
- */
-export function redactSecrets(content: string): string {
-  let result = content;
-
-  // 1. Full Cryptographic Private Key Blocks
-  result = result.replace(
-    /-----BEGIN [A-Z ]+ PRIVATE KEY-----[\s\S]*?-----END [A-Z ]+ PRIVATE KEY-----/g,
-    "[REDACTED PRIVATE KEY]",
-  );
-
-  // 2. High-risk environment variable and config target matches
-  const targetKeys = [
-    "OPENAI_API_KEY",
-    "AWS_SECRET_ACCESS_KEY",
-    "GITHUB_TOKEN",
-    "DATABASE_URL",
-  ];
-
-  for (const key of targetKeys) {
-    const regex = new RegExp(
-      `(\\b${key}\\s*[=:]\\s*['" ]?)([^'"\\s\\n;]+)(['" ]?)`,
-      "gi",
-    );
-    result = result.replace(regex, "$1[REDACTED]$3");
-  }
-
-  // 3. Standalone known platform token structures (high confidence fallback)
-  result = result.replace(/\bsk-[a-zA-Z0-9-_]{24,}\b/g, "[REDACTED]");
-  result = result.replace(/\bghp_[a-zA-Z0-9]{36}\b/g, "[REDACTED]");
-
-  return result;
 }
 
 function readFile(
@@ -389,22 +355,16 @@ function readFile(
     }
 
     assertRealPathInsideRoot(resolved, resolvedRoot, filePath);
-
     fd = openReadOnlyNoFollow(resolved, filePath);
-
     assertOpenedFileStillMatchesPath(fd, resolved, filePath);
-
     assertRealPathInsideRoot(resolved, resolvedRoot, filePath);
 
     const rawContent = fs.readFileSync(fd, { encoding }) as string;
-
-    // Apply token filtering dynamically if enabled explicitly
     const finalContent = redaction?.enabled
       ? redactSecrets(rawContent)
       : rawContent;
 
     recordAudit(auditSink, filePath, resolved, "allowed");
-
     return finalContent;
   } finally {
     if (fd !== undefined) {
@@ -414,7 +374,7 @@ function readFile(
 }
 
 // ---------------------------------------------------------------------------
-// Stateless factory API (preferred — no shared mutable state)
+// Stateless factory API
 // ---------------------------------------------------------------------------
 
 export function createGuard(options?: CreateGuardOptions | string) {
@@ -473,7 +433,7 @@ export function createGuard(options?: CreateGuardOptions | string) {
 }
 
 // ---------------------------------------------------------------------------
-// Legacy stateful API (kept for backwards compat — avoid in servers)
+// Legacy stateful API (Backward Compatibility)
 // ---------------------------------------------------------------------------
 
 let policyPatterns: PolicyRule[] = [];

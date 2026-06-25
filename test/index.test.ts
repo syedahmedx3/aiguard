@@ -194,7 +194,7 @@ describe("aiguard", () => {
   describe("Phase 4: Interactive Consent Pipeline", () => {
     it("should allow reading files asynchronously when the user explicitly grants consent", async () => {
       const guard = createGuard({
-        onAsk: async (ctx) => {
+        onAsk: (ctx: { path: string; resolvedPath: string }) => {
           expect(ctx.path).toBe("test.txt");
           return true; // Simulate operator clicking "Allow"
         },
