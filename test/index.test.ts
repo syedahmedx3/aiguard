@@ -187,4 +187,69 @@ describe("aiguard", () => {
 
     expect(() => secureReadFile("test.txt")).toThrow(AccessDeniedError);
   });
+
+  // ===========================================================================
+  // Phase 3: Secret Redaction Suite
+  // ===========================================================================
+  describe("Phase 3: Secret Redaction Engine", () => {
+    it("preserves raw text strings by default when option is omitted", () => {
+      const guard = createGuard();
+      const rawEnv = "OPENAI_API_KEY=sk-abcdef123456789012345678";
+      fs.writeFileSync("test-default.txt", rawEnv, "utf-8");
+
+      try {
+        expect(guard.secureReadFile("test-default.txt")).toBe(rawEnv);
+      } finally {
+        fs.unlinkSync("test-default.txt");
+      }
+    });
+
+    it("redacts target sensitive variables accurately when explicit opt-in is configured", () => {
+      const guard = createGuard({
+        redaction: { enabled: true },
+      });
+
+      const secretsContent = [
+        "OPENAI_API_KEY=sk-keycontenthere123456789",
+        "AWS_SECRET_ACCESS_KEY='secret-aws-key-token'",
+        'DATABASE_URL="postgresql://postgres:secretpass@127.0.0.1:5432/production"',
+        "GITHUB_TOKEN: ghp_mytokenhashstringhere36charslong",
+      ].join("\n");
+
+      fs.writeFileSync("test-redacted.txt", secretsContent, "utf-8");
+
+      try {
+        const processed = guard.secureReadFile("test-redacted.txt");
+        expect(processed).toContain("OPENAI_API_KEY=[REDACTED]");
+        expect(processed).toContain("AWS_SECRET_ACCESS_KEY='[REDACTED]'");
+        expect(processed).toContain('DATABASE_URL="[REDACTED]"');
+        expect(processed).toContain("GITHUB_TOKEN: [REDACTED]");
+      } finally {
+        fs.unlinkSync("test-redacted.txt");
+      }
+    });
+
+    it("scrubs multi-line asymmetric cryptographic private key block formats completely", () => {
+      const guard = createGuard({
+        redaction: { enabled: true },
+      });
+
+      const privateKey = [
+        "-----BEGIN RSA PRIVATE KEY-----",
+        "MIIEogIBAAKCAQEAnzY4sS...",
+        "D3fG7h1b90asXz...",
+        "-----END RSA PRIVATE KEY-----",
+      ].join("\n");
+
+      fs.writeFileSync("test-key.txt", privateKey, "utf-8");
+
+      try {
+        expect(guard.secureReadFile("test-key.txt")).toBe(
+          "[REDACTED PRIVATE KEY]",
+        );
+      } finally {
+        fs.unlinkSync("test-key.txt");
+      }
+    });
+  });
 });
