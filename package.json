@@ -1,7 +1,7 @@
 {
   "name": "@syedahmedx3/aiguard",
-  "version": "1.0.0",
-  "description": "AI-powered access firewall for local file systems.",
+  "version": "1.2.0",
+  "description": "AI-powered access firewall for local file systems and AI agents.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "type": "module",
@@ -14,13 +14,16 @@
     "typecheck": "tsc --noEmit"
   },
   "keywords": [
+    "ai",
     "security",
     "firewall",
-    "file-system",
+    "filesystem",
     "access-control",
     "path-traversal",
-    "odoo",
-    "ai"
+    "symlink-protection",
+    "llm",
+    "mcp",
+    "agent-security"
   ],
   "repository": {
     "type": "git",
@@ -29,6 +32,7 @@
   "bugs": {
     "url": "https://github.com/syedahmedx3/aiguard/issues"
   },
+  "homepage": "https://github.com/syedahmedx3/aiguard#readme",
   "author": "Syed Ahmed Mohi Uddin Hasan",
   "license": "MIT",
   "dependencies": {
