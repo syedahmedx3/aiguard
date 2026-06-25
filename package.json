@@ -1,7 +1,7 @@
 {
   "name": "@syedahmedx3/aiguard",
   "version": "1.0.0",
-  "description": "",
+  "description": "AI-powered access firewall for local file systems.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "type": "module",
@@ -13,9 +13,24 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "keywords": [
+    "security",
+    "firewall",
+    "file-system",
+    "access-control",
+    "path-traversal",
+    "odoo",
+    "ai"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/syedahmedx3/aiguard.git"
+  },
+  "bugs": {
+    "url": "https://github.com/syedahmedx3/aiguard/issues"
+  },
+  "author": "Syed Ahmed Mohi Uddin Hasan",
+  "license": "MIT",
   "dependencies": {
     "minimatch": "^10.2.5"
   },

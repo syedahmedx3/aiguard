@@ -1,0 +1,5 @@
+# .aipolicy
++ src/**/*.ts
++ dist/**/*.js
+- .env
+- secrets/*
