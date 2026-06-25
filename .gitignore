@@ -1,11 +1,16 @@
+# Dependencies
 node_modules/
-dist/
-coverage/
-*.tgz
 
-# Temporary/manual testing
+# Build Output
+dist/
+*.tgz
+coverage/
+
+# Security (Never commit secrets!)
+.env
+secrets/
+
+# Temporary/Manual Testing Files
 manual-test.mjs
 hello.txt
 fake-link
-secrets/
-.aipolicy
