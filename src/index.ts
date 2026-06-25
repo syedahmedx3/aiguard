@@ -25,10 +25,16 @@ export interface RedactionOptions {
   enabled?: boolean;
 }
 
+export type InteractiveConsentHook = (context: {
+  path: string;
+  resolvedPath: string;
+}) => Promise<boolean> | boolean;
+
 export interface CreateGuardOptions {
   policyPath?: string;
   audit?: AuditOptions;
-  redaction?: RedactionOptions; // Added for Phase 3
+  redaction?: RedactionOptions;
+  onAsk?: InteractiveConsentHook;
 }
 
 interface PolicyRule {
@@ -269,6 +275,46 @@ function getAccessCheckResult(
   return { allowed: true, resolvedPath: resolved };
 }
 
+async function evaluateAccessAsync(
+  filePath: string,
+  patterns: PolicyRule[],
+  rootDir: string,
+  onAsk?: InteractiveConsentHook,
+): Promise<{ allowed: boolean; resolvedPath: string; rule?: string }> {
+  const result = getAccessCheckResult(filePath, patterns, rootDir);
+
+  // If the policy or hard checks have already blocked it, deny immediately
+  if (!result.allowed) {
+    return result;
+  }
+
+  // If an interactive consent hook is specified, execute it before granting full clearance
+  if (onAsk) {
+    try {
+      const userConsent = await onAsk({
+        path: filePath,
+        resolvedPath: result.resolvedPath,
+      });
+
+      if (!userConsent) {
+        return {
+          allowed: false,
+          resolvedPath: result.resolvedPath,
+          rule: "interactive_consent_denied",
+        };
+      }
+    } catch (error) {
+      return {
+        allowed: false,
+        resolvedPath: result.resolvedPath,
+        rule: "interactive_consent_error",
+      };
+    }
+  }
+
+  return { allowed: true, resolvedPath: result.resolvedPath };
+}
+
 function checkCanRead(
   filePath: string,
   patterns: PolicyRule[],
@@ -379,6 +425,7 @@ export function createGuard(options?: CreateGuardOptions | string) {
   const auditOptions = typeof options === "object" ? options?.audit : undefined;
   const redactionOptions =
     typeof options === "object" ? options?.redaction : undefined;
+  const onAskHook = typeof options === "object" ? options?.onAsk : undefined;
 
   const patterns = loadPatterns(policyPath);
   const rootDir = process.cwd();
@@ -393,8 +440,34 @@ export function createGuard(options?: CreateGuardOptions | string) {
 
   return {
     canRead: (p: string) => checkCanRead(p, patterns, rootDir),
+
+    checkAccess: async (p: string): Promise<boolean> => {
+      const evaluation = await evaluateAccessAsync(
+        p,
+        patterns,
+        rootDir,
+        onAskHook,
+      );
+      return evaluation.allowed;
+    },
+
+    secureReadFileAsync: async (
+      p: string,
+      enc?: BufferEncoding,
+    ): Promise<string> =>
+      readFileAsync(
+        p,
+        patterns,
+        enc,
+        rootDir,
+        auditSink,
+        redactionOptions,
+        onAskHook,
+      ),
+
     secureReadFile: (p: string, enc?: BufferEncoding) =>
       readFile(p, patterns, enc, rootDir, auditSink, redactionOptions),
+
     getAuditEntries: () => auditSink.getEntries(),
   };
 }
@@ -418,4 +491,58 @@ export function secureReadFile(
   encoding: BufferEncoding = "utf-8",
 ): string {
   return readFile(filePath, policyPatterns, encoding);
+}
+
+async function readFileAsync(
+  filePath: string,
+  patterns: PolicyRule[],
+  encoding: BufferEncoding = "utf-8",
+  rootDir = process.cwd(),
+  auditSink: AuditSink,
+  redaction?: RedactionOptions,
+  onAsk?: InteractiveConsentHook,
+): Promise<string> {
+  const accessCheck = await evaluateAccessAsync(
+    filePath,
+    patterns,
+    rootDir,
+    onAsk,
+  );
+
+  if (!accessCheck.allowed) {
+    recordAudit(
+      auditSink,
+      filePath,
+      accessCheck.resolvedPath,
+      "blocked",
+      accessCheck.rule,
+    );
+    throw new AccessDeniedError(filePath);
+  }
+
+  const resolvedRoot = path.resolve(rootDir);
+  const resolved = accessCheck.resolvedPath;
+  let fd: number | undefined;
+
+  try {
+    const stat = fs.lstatSync(resolved);
+    if (stat.isSymbolicLink()) throw new AccessDeniedError(filePath);
+
+    assertRealPathInsideRoot(resolved, resolvedRoot, filePath);
+    fd = openReadOnlyNoFollow(resolved, filePath);
+    assertOpenedFileStillMatchesPath(fd, resolved, filePath);
+    assertRealPathInsideRoot(resolved, resolvedRoot, filePath);
+
+    const rawContent = fs.readFileSync(fd, { encoding }) as string;
+    const finalContent = redaction?.enabled
+      ? redactSecrets(rawContent)
+      : rawContent;
+
+    recordAudit(auditSink, filePath, resolved, "allowed");
+    return finalContent;
+  } finally {
+    if (fd !== undefined) {
+      fs.closeSync(fd);
+    }
+  }
 }
