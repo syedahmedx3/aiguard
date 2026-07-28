@@ -5,6 +5,12 @@ import { minimatch } from "minimatch";
 import { AccessDeniedError } from "./errors.js";
 import { redactSecrets } from "./redaction/default-redactor.js";
 
+export { createMCPAdapter } from "./mcp/adapter.js";
+export type { MCPAdapter } from "./mcp/adapter.js";
+export type { MCPRequest, MCPResponse } from "./mcp/types.js";
+export type { AccessDecision } from "./policy/access-decision.js";
+export type { PolicyEngine } from "./policy/engine.js";
+
 export type AuditDecision = "allowed" | "blocked";
 export type AuditDestination = "memory" | "file";
 
