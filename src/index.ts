@@ -17,6 +17,12 @@ export type { AccessDecision } from "./policy/access-decision.js";
 export type { PolicyEngine } from "./policy/engine.js";
 export { parsePolicyFile } from "./policy/parser.js";
 export type { ParsedPolicyRule } from "./policy/parser.js";
+export {
+  getDefaultPolicyContent,
+  isCoveredByPolicy,
+  scanWorkspace,
+} from "./scanner/index.js";
+export type { ScanResult, ScanSeverity } from "./scanner/index.js";
 
 export type AuditDecision = "allowed" | "blocked";
 export type AuditDestination = "memory" | "file";
