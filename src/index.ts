@@ -4,12 +4,19 @@ import path from "node:path";
 import { minimatch } from "minimatch";
 import { AccessDeniedError } from "./errors.js";
 import { redactSecrets } from "./redaction/default-redactor.js";
+import {
+  normalizePolicyPath,
+  parsePolicyFile,
+} from "./policy/parser.js";
+import type { ParsedPolicyRule as PolicyRule } from "./policy/parser.js";
 
 export { createMCPAdapter } from "./mcp/adapter.js";
 export type { MCPAdapter } from "./mcp/adapter.js";
 export type { MCPRequest, MCPResponse } from "./mcp/types.js";
 export type { AccessDecision } from "./policy/access-decision.js";
 export type { PolicyEngine } from "./policy/engine.js";
+export { parsePolicyFile } from "./policy/parser.js";
+export type { ParsedPolicyRule } from "./policy/parser.js";
 
 export type AuditDecision = "allowed" | "blocked";
 export type AuditDestination = "memory" | "file";
@@ -44,11 +51,6 @@ export interface CreateGuardOptions {
   onAsk?: InteractiveConsentHook;
 }
 
-interface PolicyRule {
-  raw: string;
-  normalized: string;
-}
-
 interface AccessCheckResult {
   allowed: boolean;
   resolvedPath: string;
@@ -67,14 +69,7 @@ interface AuditSink {
 function loadPatterns(policyPath: string): PolicyRule[] {
   try {
     const content = fs.readFileSync(policyPath, "utf-8");
-    return content
-      .split("\n")
-      .map((line) => line.trim())
-      .filter((line) => line && !line.startsWith("#"))
-      .map((line) => ({
-        raw: line,
-        normalized: normalizePolicyPath(line),
-      }));
+    return parsePolicyFile(content);
   } catch {
     return [];
   }
@@ -158,10 +153,6 @@ function recordAudit(
   } catch {
     return;
   }
-}
-
-function normalizePolicyPath(filePath: string): string {
-  return filePath.normalize("NFC").replaceAll("\\", "/");
 }
 
 function normalizeForContainment(filePath: string): string {
@@ -251,6 +242,30 @@ function assertOpenedFileStillMatchesPath(
   }
 }
 
+function matchesPolicyRule(relativePath: string, rule: PolicyRule): boolean {
+  const options = { dot: true, nocase: true };
+  if (rule.pattern.includes("/")) {
+    return minimatch(relativePath, rule.pattern, options);
+  }
+
+  return minimatch(path.basename(relativePath), rule.pattern, options);
+}
+
+function findLastMatchingRule(
+  relativePath: string,
+  patterns: PolicyRule[],
+): PolicyRule | undefined {
+  let matchingRule: PolicyRule | undefined;
+
+  for (const pattern of patterns) {
+    if (matchesPolicyRule(relativePath, pattern)) {
+      matchingRule = pattern;
+    }
+  }
+
+  return matchingRule;
+}
+
 function getAccessCheckResult(
   filePath: string,
   patterns: PolicyRule[],
@@ -270,10 +285,8 @@ function getAccessCheckResult(
   }
 
   const relative = normalizePolicyPath(path.relative(resolvedRoot, resolved));
-  const matchingRule = patterns.find((pattern) =>
-    minimatch(relative, pattern.normalized, { dot: true, nocase: true }),
-  );
-  if (matchingRule) {
+  const matchingRule = findLastMatchingRule(relative, patterns);
+  if (matchingRule && !matchingRule.negated) {
     return {
       allowed: false,
       resolvedPath: resolved,
