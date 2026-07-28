@@ -13,8 +13,12 @@ export function redactSecrets(content: string): string {
   // 2. High-risk environment variable and config target matches
   const targetKeys = [
     "OPENAI_API_KEY",
+    "AWS_ACCESS_KEY_ID",
     "AWS_SECRET_ACCESS_KEY",
     "GITHUB_TOKEN",
+    "OAUTH_TOKEN",
+    "ACCESS_TOKEN",
+    "REFRESH_TOKEN",
     "DATABASE_URL",
   ];
 
@@ -28,6 +32,9 @@ export function redactSecrets(content: string): string {
 
   // 3. Standalone known platform token structures (high confidence fallback)
   result = result.replace(/\bsk-[a-zA-Z0-9-_]{24,}\b/g, "[REDACTED]");
+  result = result.replace(/\bAKIA[0-9A-Z]{16}\b/g, "[REDACTED]");
+  result = result.replace(/\bASIA[0-9A-Z]{16}\b/g, "[REDACTED]");
+  result = result.replace(/\bya29\.[a-zA-Z0-9._-]{16,}\b/g, "[REDACTED]");
   result = result.replace(/\bghp_[a-zA-Z0-9]{36}\b/g, "[REDACTED]");
 
   return result;

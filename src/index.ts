@@ -180,17 +180,69 @@ function isInsideOrEqual(childPath: string, parentPath: string): boolean {
 function hasUnsafePathSyntax(filePath: string): boolean {
   if (filePath.includes("\0")) return true;
 
-  const slashNormalized = filePath.replaceAll("\\", "/");
+  const pathVariants = getUnsafeSyntaxVariants(filePath);
+
+  return pathVariants.some((pathVariant) => {
+    const slashNormalized = pathVariant.replaceAll("\\", "/");
+    if (
+      slashNormalized.startsWith("//?/") ||
+      slashNormalized.startsWith("//./")
+    ) {
+      return true;
+    }
+
+    if (
+      slashNormalized === ".." ||
+      slashNormalized.startsWith("../")
+    ) {
+      return true;
+    }
+
+    const hasScheme = /^[a-zA-Z][a-zA-Z\d+.-]*:/.test(pathVariant);
+    const isWindowsAbsolutePath = /^[a-zA-Z]:[\\/]/.test(pathVariant);
+    return hasScheme && !isWindowsAbsolutePath;
+  });
+}
+
+function getUnsafeSyntaxVariants(filePath: string): string[] {
+  const variants = [filePath, filePath.normalize("NFKC")];
+  let decoded = filePath;
+
+  for (let index = 0; index < 2; index += 1) {
+    try {
+      const nextDecoded = decodeURIComponent(decoded);
+      if (nextDecoded === decoded) break;
+      decoded = nextDecoded;
+      variants.push(decoded, decoded.normalize("NFKC"));
+    } catch {
+      break;
+    }
+  }
+
+  return [...new Set(variants)];
+}
+
+function hasUnsafeCompatibilityPathSyntax(filePath: string): boolean {
+  const compatibilityNormalized = filePath.normalize("NFKC");
+  if (compatibilityNormalized === filePath) return false;
+
+  const originalSlashNormalized = filePath.replaceAll("\\", "/");
+  const compatibilitySlashNormalized = compatibilityNormalized.replaceAll(
+    "\\",
+    "/",
+  );
+
   if (
-    slashNormalized.startsWith("//?/") ||
-    slashNormalized.startsWith("//./")
+    compatibilitySlashNormalized.includes("/") &&
+    !originalSlashNormalized.includes("/")
   ) {
     return true;
   }
 
-  const hasScheme = /^[a-zA-Z][a-zA-Z\d+.-]*:/.test(filePath);
-  const isWindowsAbsolutePath = /^[a-zA-Z]:[\\/]/.test(filePath);
-  return hasScheme && !isWindowsAbsolutePath;
+  return (
+    compatibilitySlashNormalized === ".." ||
+    compatibilitySlashNormalized.startsWith("../")
+  );
 }
 
 function assertInsideRoot(
@@ -291,6 +343,10 @@ function getAccessCheckResult(
   }
 
   const relative = normalizePolicyPath(path.relative(resolvedRoot, resolved));
+  if (hasUnsafeCompatibilityPathSyntax(relative)) {
+    return { allowed: false, resolvedPath: resolved };
+  }
+
   const matchingRule = findLastMatchingRule(relative, patterns);
   if (matchingRule && !matchingRule.negated) {
     return {
